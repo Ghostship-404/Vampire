@@ -1,4 +1,4 @@
-const DATA = window.WORLD_DATA || { metadata:{}, sections:[], locations:[], timeline:[], priceTable:[] };
+const DATA = window.WORLD_DATA || { metadata:{}, sections:[], locations:[], timeline:[] };
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
@@ -12,15 +12,14 @@ function escapeRegExp(value = ''){
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function highlight(text, query){
-  const safe = escapeHTML(text || '');
-  if(!query) return safe;
-  const pattern = escapeRegExp(query.trim());
-  if(!pattern) return safe;
-  return safe.replace(new RegExp(pattern, 'gi'), match => `<mark>${match}</mark>`);
+function highlight(text = '', query = ''){
+  const safe = escapeHTML(text);
+  const trimmed = query.trim();
+  if(!trimmed) return safe;
+  return safe.replace(new RegExp(escapeRegExp(trimmed), 'gi'), match => `<mark>${match}</mark>`);
 }
 
-function excerpt(text = '', length = 180){
+function excerpt(text = '', length = 190){
   const clean = String(text).replace(/\s+/g, ' ').trim();
   return clean.length > length ? `${clean.slice(0, length)}……` : clean;
 }
@@ -34,98 +33,148 @@ function groupBy(list, keyFn){
   }, {});
 }
 
-function smoothJump(id){
-  const el = document.getElementById(id);
-  if(el) el.scrollIntoView({ behavior:'smooth', block:'start' });
+function getSection(title){
+  return (DATA.sections || []).find(section => section.title === title);
 }
 
-function initStats(){
-  const grid = $('#statGrid');
-  if(!grid) return;
-  const meta = DATA.metadata || {};
-  const categories = Array.isArray(meta.categories) ? meta.categories.length : 0;
-  const stats = [
-    ['档案条目', meta.sectionCount || DATA.sections.length || 0],
-    ['设定字数', `${Math.round((meta.characterCount || 0) / 1000)}k`],
-    ['地图地点', meta.locationCount || DATA.locations.length || 0],
-    ['设定分类', categories]
-  ];
-  grid.innerHTML = stats.map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('');
+function sectionLink(section){
+  return `./archive.html#${encodeURIComponent(section.id)}`;
 }
 
-function initFeatures(){
-  const node = $('#featureGrid');
-  if(!node) return;
-  const features = [
-    ['♛','衰老的王权','女王、内阁、议院、缙绅会议、贵族家系与地方领主构成帝国政治主轴。'],
-    ['⚙','工业化与金融','铁路、交易所、联合行会、工程师和货币体系让世界具有近代制度质感。'],
-    ['ψ','信仰与术法','圣主信会、圣堂武士、卫道士、术士血脉与扭曲术源构成宗教和超自然冲突。'],
-    ['☾','黑夜种族','吸血鬼、半血氏族、月人、黑夜土地和边境传说提供哥特恐怖张力。']
-  ];
-  node.innerHTML = features.map(([icon,title,text]) => `
-    <article class="feature-card reveal">
-      <span class="icon">${icon}</span>
-      <h3>${escapeHTML(title)}</h3>
-      <p>${escapeHTML(text)}</p>
-    </article>
-  `).join('');
+function initNav(){
+  const current = location.pathname.split('/').pop() || 'index.html';
+  $$('.site-nav a').forEach(link => {
+    const href = link.getAttribute('href') || '';
+    if(href.endsWith(current)) link.classList.add('active');
+  });
+  const button = $('#navToggle');
+  const nav = $('#siteNav');
+  if(!button || !nav) return;
+  button.addEventListener('click', () => {
+    const open = !nav.classList.contains('open');
+    nav.classList.toggle('open', open);
+    button.setAttribute('aria-expanded', String(open));
+  });
+}
+
+function initReveal(){
+  const nodes = $$('.reveal');
+  if(!('IntersectionObserver' in window)){
+    nodes.forEach(node => node.classList.add('visible'));
+    return;
+  }
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if(entry.isIntersecting){
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold:.08 });
+  nodes.forEach(node => observer.observe(node));
+}
+
+function renderHome(){
+  const root = $('#homePortals');
+  if(root){
+    const portals = [
+      {title:'地图志', href:'./atlas.html', source:'地图志'},
+      {title:'圣主信会', href:'./archive.html#%E5%9C%A3%E4%B8%BB%E4%BF%A1%E4%BC%9A', source:'圣主信会'},
+      {title:'术士', href:'./archive.html#%E6%9C%AF%E5%A3%AB', source:'术士'},
+      {title:'吸血鬼', href:'./archive.html#%E5%90%B8%E8%A1%80%E9%AC%BC', source:'吸血鬼'},
+      {title:'帝国五百年', href:'./chronicle.html', source:'帝国五百年'},
+      {title:'国立图书馆', href:'./library.html', source:'弗菈明国立图书馆'}
+    ];
+    root.innerHTML = portals.map(item => {
+      const section = getSection(item.source);
+      const text = section?.summary || (section?.paragraphs || []).join(' ') || '';
+      return `<a class="portal-card reveal" href="${item.href}">
+        <span>${escapeHTML(item.title)}</span>
+        <p>${escapeHTML(excerpt(text, 150))}</p>
+      </a>`;
+    }).join('');
+  }
+
+  const excerptNode = $('#homeExcerpt');
+  if(excerptNode){
+    const empire = getSection('弗菈明帝国');
+    const paragraphs = empire?.paragraphs || [];
+    excerptNode.innerHTML = `
+      <p class="overline">弗菈明帝国</p>
+      <h2>${escapeHTML(empire?.title || '弗菈明帝国')}</h2>
+      ${(paragraphs.slice(0, 2)).map(p => `<p>${escapeHTML(p)}</p>`).join('')}
+      <a class="text-link" href="${empire ? sectionLink(empire) : './archive.html'}">阅读全文</a>
+    `;
+  }
+}
+
+function initRegionFilter(){
+  const select = $('#regionFilter');
+  if(!select) return;
+  const regions = [...new Set((DATA.locations || []).map(item => item.region || '未分类'))];
+  regions.forEach(region => {
+    const option = document.createElement('option');
+    option.value = region;
+    option.textContent = region;
+    select.appendChild(option);
+  });
 }
 
 function renderLocations(){
   const root = $('#locationList');
-  const input = $('#locationSearch');
   if(!root) return;
-  const query = input ? input.value.trim() : '';
+  const query = $('#locationSearch')?.value.trim() || '';
+  const region = $('#regionFilter')?.value || 'all';
   let locations = DATA.locations || [];
-  if(query){
-    locations = locations.filter(item => [item.name, item.region, item.text].join(' ').includes(query));
-  }
+  if(region !== 'all') locations = locations.filter(item => (item.region || '未分类') === region);
+  if(query) locations = locations.filter(item => [item.name, item.region, item.text].join(' ').includes(query));
   if(!locations.length){
-    root.innerHTML = '<div class="empty">没有找到匹配地点。</div>';
+    root.innerHTML = '<div class="empty">无匹配地点。</div>';
     return;
   }
   const grouped = groupBy(locations, item => item.region || '未分类');
-  root.innerHTML = `<div class="location-groups">${Object.entries(grouped).map(([region, items]) => `
-    <section class="location-group">
-      <h3>${highlight(region, query)}</h3>
-      ${items.slice(0, 10).map(item => `
-        <a class="location-card" href="#${encodeURIComponent(item.id)}" data-entry-id="${escapeHTML(item.id)}">
-          <strong>${highlight(item.name, query)}</strong>
-          <span>${highlight(excerpt(item.text || '暂无摘要。', 160), query)}</span>
-        </a>
-      `).join('')}
-    </section>`).join('')}</div>`;
+  root.innerHTML = Object.entries(grouped).map(([name, items]) => `
+    <section class="location-group reveal">
+      <h2>${highlight(name, query)}</h2>
+      <div class="location-cards">
+        ${items.map(item => `<article class="location-card" id="${escapeHTML(item.id)}">
+          <div class="card-kicker">${highlight(item.region || '未分类', query)}</div>
+          <h3>${highlight(item.name, query)}</h3>
+          <p>${highlight(item.text || '', query)}</p>
+          <a class="text-link" href="./archive.html#${encodeURIComponent(item.id)}">查看条目</a>
+        </article>`).join('')}
+      </div>
+    </section>
+  `).join('');
+  initReveal();
 }
 
 function renderTimeline(){
   const root = $('#timelineList');
-  const input = $('#timelineSearch');
   if(!root) return;
-  const query = input ? input.value.trim() : '';
+  const query = $('#timelineSearch')?.value.trim() || '';
   let events = DATA.timeline || [];
-  if(query){
-    events = events.filter(event => [event.date, event.title, event.text].join(' ').includes(query));
-  }
-  root.innerHTML = events.length ? events.map(event => `
-    <article class="timeline-item">
-      <div class="timeline-date">${highlight(event.date, query)}</div>
-      <h3><a href="#${encodeURIComponent(event.id)}" data-entry-id="${escapeHTML(event.id)}">${highlight(event.title, query)}</a></h3>
-      <p>${highlight(excerpt(event.text || '', 260), query)}</p>
-    </article>
-  `).join('') : '<div class="empty">没有找到匹配的年表事件。</div>';
-}
-
-function initLibrary(){
-  const root = $('#libraryGrid');
-  if(!root) return;
-  const library = (DATA.sections || []).find(section => section.title === '弗菈明国立图书馆');
-  if(!library){
-    root.innerHTML = '<div class="empty">没有找到图书馆条目。</div>';
+  if(query) events = events.filter(event => [event.date, event.title, event.text].join(' ').includes(query));
+  if(!events.length){
+    root.innerHTML = '<div class="empty">无匹配年表。</div>';
     return;
   }
+  root.innerHTML = events.map(event => `<article class="timeline-item reveal" id="${escapeHTML(event.id)}">
+    <div class="timeline-date">${highlight(event.date, query)}</div>
+    <div>
+      <h2>${highlight(event.title, query)}</h2>
+      <p>${highlight(event.text || '', query)}</p>
+      <a class="text-link" href="./archive.html#${encodeURIComponent(event.id)}">查看条目</a>
+    </div>
+  </article>`).join('');
+  initReveal();
+}
+
+function getLibraryBooks(){
+  const library = getSection('弗菈明国立图书馆');
   const books = [];
   let current = null;
-  (library.paragraphs || []).forEach(paragraph => {
+  (library?.paragraphs || []).forEach(paragraph => {
     const text = paragraph.trim();
     if(/^《.+》/.test(text)){
       current = { title:text, text:[] };
@@ -134,18 +183,35 @@ function initLibrary(){
       current.text.push(text);
     }
   });
-  root.innerHTML = books.slice(0, 12).map(book => `
-    <article class="book-card reveal">
-      <h3>${escapeHTML(book.title)}</h3>
-      <p>${escapeHTML(excerpt(book.text.join(' '), 190) || '馆藏条目。')}</p>
-    </article>
-  `).join('');
+  return books;
+}
+
+function renderLibrary(){
+  const root = $('#libraryGrid');
+  if(!root) return;
+  const query = $('#librarySearch')?.value.trim() || '';
+  let books = getLibraryBooks();
+  if(query) books = books.filter(book => [book.title, ...book.text].join(' ').includes(query));
+  if(!books.length){
+    root.innerHTML = '<div class="empty">无匹配馆藏。</div>';
+    return;
+  }
+  root.innerHTML = books.map((book, index) => `<article class="book-card reveal">
+    <div class="book-spine" aria-hidden="true">${String(index + 1).padStart(2, '0')}</div>
+    <div>
+      <h2>${highlight(book.title, query)}</h2>
+      <p>${highlight(excerpt(book.text.join(' '), 360), query)}</p>
+    </div>
+  </article>`).join('');
+  initReveal();
 }
 
 function initCategoryFilter(){
   const select = $('#categoryFilter');
   if(!select) return;
-  const categories = Array.isArray(DATA.metadata?.categories) ? DATA.metadata.categories : [...new Set((DATA.sections || []).map(s => s.category).filter(Boolean))];
+  const categories = Array.isArray(DATA.metadata?.categories)
+    ? DATA.metadata.categories
+    : [...new Set((DATA.sections || []).map(section => section.category).filter(Boolean))];
   categories.forEach(category => {
     const option = document.createElement('option');
     option.value = category;
@@ -164,135 +230,77 @@ function getFilteredSections(){
       section.title, section.category, section.top, section.h1, section.summary, ...(section.paragraphs || [])
     ].join(' ').includes(query));
   }
-  return { sections, query, category };
+  return { sections, query };
 }
 
 function renderArchive(){
-  const side = $('#sideIndex');
-  const list = $('#entryList');
-  if(!side || !list) return;
+  const root = $('#entryList');
+  if(!root) return;
   const { sections, query } = getFilteredSections();
-  side.innerHTML = sections.slice(0, 180).map(section => `
-    <a href="#${encodeURIComponent(section.id)}" data-entry-id="${escapeHTML(section.id)}">${highlight(section.title, query)}</a>
-  `).join('') || '<div class="empty">无匹配条目</div>';
   if(!sections.length){
-    list.innerHTML = '<div class="empty">没有找到匹配条目。可以减少关键词，或切换到“全部分类”。</div>';
+    root.innerHTML = '<div class="empty">无匹配条目。</div>';
     return;
   }
-  list.innerHTML = sections.map((section, index) => {
-    const open = query || index < 3 ? ' open' : '';
-    const body = (section.paragraphs || []).map(p => `<p>${highlight(p, query)}</p>`).join('') || `<p>${highlight(section.summary || '暂无正文。', query)}</p>`;
-    return `
-      <details class="entry" id="${escapeHTML(section.id)}"${open}>
-        <summary>
-          <div>
-            <h3>${highlight(section.title, query)}</h3>
-            <div class="entry-meta">
-              ${section.category ? `<span class="tag">${escapeHTML(section.category)}</span>` : ''}
-              ${section.h1 ? `<span class="parent-tag">${escapeHTML(section.h1)}</span>` : ''}
-              ${section.top && section.top !== section.title ? `<span class="parent-tag">${escapeHTML(section.top)}</span>` : ''}
-            </div>
+  root.innerHTML = sections.map((section, index) => {
+    const shouldOpen = location.hash && decodeURIComponent(location.hash.slice(1)) === section.id;
+    const open = shouldOpen || query || index < 2 ? ' open' : '';
+    const paragraphs = section.paragraphs?.length ? section.paragraphs : [section.summary || ''];
+    return `<details class="entry reveal" id="${escapeHTML(section.id)}"${open}>
+      <summary>
+        <div>
+          <h2>${highlight(section.title, query)}</h2>
+          <div class="entry-meta">
+            ${section.category ? `<span>${escapeHTML(section.category)}</span>` : ''}
+            ${section.top && section.top !== section.title ? `<span>${escapeHTML(section.top)}</span>` : ''}
           </div>
-          <div class="chev">⌄</div>
-        </summary>
-        <div class="entry-body">${body}</div>
-      </details>
-    `;
+        </div>
+        <span class="chevron">⌄</span>
+      </summary>
+      <div class="entry-body">${paragraphs.map(p => `<p>${highlight(p, query)}</p>`).join('')}</div>
+    </details>`;
   }).join('');
+  initReveal();
+  if(location.hash){
+    const id = decodeURIComponent(location.hash.slice(1));
+    const target = document.getElementById(id);
+    if(target){
+      target.open = true;
+      setTimeout(() => target.scrollIntoView({behavior:'smooth', block:'start'}), 80);
+    }
+  }
 }
 
-function initExpandButton(){
+function initExpand(){
   const button = $('#expandAll');
   if(!button) return;
   button.addEventListener('click', () => {
     const entries = $$('.entry');
-    const shouldOpen = entries.some(entry => !entry.open);
-    entries.forEach(entry => entry.open = shouldOpen);
-    button.textContent = shouldOpen ? '收起全部' : '展开全部';
+    const open = entries.some(item => !item.open);
+    entries.forEach(item => item.open = open);
+    button.textContent = open ? '收起全部' : '展开全部';
   });
 }
 
-function initNav(){
-  const button = $('#menuButton');
-  const nav = $('#mainNav');
-  if(button && nav){
-    button.addEventListener('click', () => {
-      const open = !nav.classList.contains('open');
-      nav.classList.toggle('open', open);
-      button.setAttribute('aria-expanded', String(open));
-    });
-    $$('#mainNav a').forEach(link => link.addEventListener('click', () => {
-      nav.classList.remove('open');
-      button.setAttribute('aria-expanded', 'false');
-    }));
-  }
-}
-
-function initPinLinks(){
-  $$('.map-pin').forEach(pin => {
-    pin.addEventListener('click', () => {
-      const targetName = pin.dataset.target;
-      const loc = (DATA.locations || []).find(item => item.name === targetName || item.id === targetName);
-      if(loc){
-        const search = $('#locationSearch');
-        if(search) search.value = targetName;
-        renderLocations();
-        setTimeout(() => smoothJump('atlas'), 0);
-      }
-    });
-  });
-}
-
-function initDelegatedEntryLinks(){
-  document.addEventListener('click', event => {
-    const link = event.target.closest('[data-entry-id]');
-    if(!link) return;
-    const id = link.getAttribute('data-entry-id');
-    const entry = document.getElementById(id);
-    if(entry){
-      event.preventDefault();
-      entry.open = true;
-      entry.scrollIntoView({ behavior:'smooth', block:'start' });
-    }
-  });
-}
-
-function initReveal(){
-  const targets = $$('.reveal');
-  if(!('IntersectionObserver' in window)){
-    targets.forEach(item => item.classList.add('visible'));
-    return;
-  }
-  const observer = new IntersectionObserver(entries => {
-    entries.forEach(entry => {
-      if(entry.isIntersecting){
-        entry.target.classList.add('visible');
-        observer.unobserve(entry.target);
-      }
-    });
-  }, { threshold:.08 });
-  targets.forEach(item => observer.observe(item));
-}
-
-function initSearchListeners(){
+function initListeners(){
   $('#locationSearch')?.addEventListener('input', renderLocations);
+  $('#regionFilter')?.addEventListener('change', renderLocations);
   $('#timelineSearch')?.addEventListener('input', renderTimeline);
+  $('#librarySearch')?.addEventListener('input', renderLibrary);
   $('#searchInput')?.addEventListener('input', renderArchive);
   $('#categoryFilter')?.addEventListener('change', renderArchive);
+  window.addEventListener('hashchange', renderArchive);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  initStats();
-  initFeatures();
+  initNav();
+  renderHome();
+  initRegionFilter();
   renderLocations();
   renderTimeline();
-  initLibrary();
+  renderLibrary();
   initCategoryFilter();
   renderArchive();
-  initExpandButton();
-  initNav();
-  initPinLinks();
-  initDelegatedEntryLinks();
-  initSearchListeners();
+  initExpand();
+  initListeners();
   initReveal();
 });
