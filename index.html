@@ -3,66 +3,55 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="热夜之梦：弗菈明帝国、地图志、帝国五百年、国立图书馆与全文档案。" />
-  <meta name="theme-color" content="#0b0a08" />
+  <meta name="theme-color" content="#100d0b" />
   <title>热夜之梦｜弗菈明帝国</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body data-page="home">
-  <div class="texture" aria-hidden="true"></div>
-  <header class="site-header" id="top">
-    <a class="brand" href="./index.html" aria-label="热夜之梦首页">
-      <span class="brand-mark">ψ</span>
-      <span class="brand-name">热夜之梦</span>
-    </a>
-    <button class="nav-toggle" id="navToggle" type="button" aria-expanded="false" aria-controls="siteNav">目录</button>
+  <header class="site-header">
+    <a class="brand" href="./index.html"><span class="brand-mark">ψ</span><span>热夜之梦</span></a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="siteNav">目录</button>
     <nav class="site-nav" id="siteNav" aria-label="主导航">
       <a href="./index.html">首页</a>
       <a href="./atlas.html">地图志</a>
       <a href="./chronicle.html">帝国五百年</a>
-      <a href="./library.html">国立图书馆</a>
-      <a href="./archive.html">全文档案</a>
+      <a href="./library.html">弗菈明国立图书馆</a>
+      <a href="./archive.html">档案索引</a>
     </nav>
   </header>
 
   <main>
-    <section class="home-hero">
-      <div class="hero-copy reveal">
-        <p class="overline">帝国历 1556 年</p>
-        <h1>弗菈明帝国</h1>
-        <blockquote>一半是魔法，一半是钢铁。</blockquote>
-        <p class="hero-text">如今是列维尼娅二世陛下加冕的第五十六周年。就连最接近权力中心的人们都无法断定，女王究竟已是风烛草露，还是这头曾震惊世界的母狮正在蛰伏等待下一个捕猎时机。</p>
-        <div class="hero-links">
-          <a class="button primary" href="./atlas.html">进入地图志</a>
-          <a class="button" href="./library.html">国立图书馆</a>
-          <a class="button" href="./chronicle.html">帝国五百年</a>
-        </div>
+    <section class="hero page-shell">
+      <div class="hero-rule"></div>
+      <p class="eyebrow">帝国历 1556 年</p>
+      <h1>弗菈明帝国</h1>
+      <p class="lead">一半是魔法，一半是钢铁。</p>
+      <p class="source-line">从精神的黑暗时代走向百花齐放的弗菈明帝国，如今又慢慢地重新滑入禁欲与自我鞭笞的深夜之中。</p>
+      <div class="action-row">
+        <a class="action primary" href="./archive.html">进入档案索引</a>
+        <a class="action" href="./atlas.html">地图志</a>
+        <a class="action" href="./library.html">国立图书馆</a>
       </div>
-      <a class="map-window reveal" href="./atlas.html" aria-label="打开地图志">
-        <img src="assets/map.jpg" alt="热夜之梦世界地图" />
-        <span>地图志</span>
-      </a>
     </section>
 
-    <section class="section compact">
-      <div class="section-title reveal">
-        <p class="overline">目录</p>
+    <section class="page-shell section-block">
+      <div class="section-head">
+        <p class="eyebrow">目录</p>
         <h2>卷目</h2>
       </div>
-      <div class="portal-grid" id="homePortals"></div>
+      <div class="gateway-grid" id="homeGateways"></div>
     </section>
 
-    <section class="section compact bottom-reading">
-      <div class="reading-card reveal" id="homeExcerpt"></div>
+    <section class="page-shell section-block split-section">
+      <article class="reading-panel" id="homeEmpire"></article>
+      <aside class="side-list" id="homeIndex"></aside>
     </section>
   </main>
 
   <footer class="site-footer">
     <a href="./index.html">首页</a>
-    <a href="./atlas.html">地图志</a>
-    <a href="./archive.html">全文档案</a>
+    <a href="./archive.html">档案索引</a>
   </footer>
-
   <script src="world-data.js"></script>
   <script src="script.js"></script>
 </body>

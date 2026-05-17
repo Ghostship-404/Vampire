@@ -1,306 +1,373 @@
-const DATA = window.WORLD_DATA || { metadata:{}, sections:[], locations:[], timeline:[] };
-const $ = (selector, root = document) => root.querySelector(selector);
-const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+(() => {
+  'use strict';
 
-function escapeHTML(value = ''){
-  return String(value).replace(/[&<>'"]/g, char => ({
-    '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;'
-  }[char]));
-}
+  const DATA = window.WORLD_DATA || { metadata: {}, sections: [], locations: [], timeline: [] };
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
-function escapeRegExp(value = ''){
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+  const categoryOrder = [
+    '帝国总览', '地图志', '政治制度', '经济与技术', '信仰与宗教',
+    '术法体系', '黑夜种族', '历史年表', '图书馆'
+  ];
 
-function highlight(text = '', query = ''){
-  const safe = escapeHTML(text);
-  const trimmed = query.trim();
-  if(!trimmed) return safe;
-  return safe.replace(new RegExp(escapeRegExp(trimmed), 'gi'), match => `<mark>${match}</mark>`);
-}
-
-function excerpt(text = '', length = 190){
-  const clean = String(text).replace(/\s+/g, ' ').trim();
-  return clean.length > length ? `${clean.slice(0, length)}……` : clean;
-}
-
-function groupBy(list, keyFn){
-  return list.reduce((acc, item) => {
-    const key = keyFn(item) || '未分类';
-    if(!acc[key]) acc[key] = [];
-    acc[key].push(item);
-    return acc;
-  }, {});
-}
-
-function getSection(title){
-  return (DATA.sections || []).find(section => section.title === title);
-}
-
-function sectionLink(section){
-  return `./archive.html#${encodeURIComponent(section.id)}`;
-}
-
-function initNav(){
-  const current = location.pathname.split('/').pop() || 'index.html';
-  $$('.site-nav a').forEach(link => {
-    const href = link.getAttribute('href') || '';
-    if(href.endsWith(current)) link.classList.add('active');
-  });
-  const button = $('#navToggle');
-  const nav = $('#siteNav');
-  if(!button || !nav) return;
-  button.addEventListener('click', () => {
-    const open = !nav.classList.contains('open');
-    nav.classList.toggle('open', open);
-    button.setAttribute('aria-expanded', String(open));
-  });
-}
-
-function initReveal(){
-  const nodes = $$('.reveal');
-  if(!('IntersectionObserver' in window)){
-    nodes.forEach(node => node.classList.add('visible'));
-    return;
+  function escapeHTML(value = '') {
+    return String(value).replace(/[&<>'"]/g, (char) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    })[char]);
   }
-  const observer = new IntersectionObserver(entries => {
-    entries.forEach(entry => {
-      if(entry.isIntersecting){
-        entry.target.classList.add('visible');
-        observer.unobserve(entry.target);
-      }
-    });
-  }, { threshold:.08 });
-  nodes.forEach(node => observer.observe(node));
-}
 
-function renderHome(){
-  const root = $('#homePortals');
-  if(root){
-    const portals = [
-      {title:'地图志', href:'./atlas.html', source:'地图志'},
-      {title:'圣主信会', href:'./archive.html#%E5%9C%A3%E4%B8%BB%E4%BF%A1%E4%BC%9A', source:'圣主信会'},
-      {title:'术士', href:'./archive.html#%E6%9C%AF%E5%A3%AB', source:'术士'},
-      {title:'吸血鬼', href:'./archive.html#%E5%90%B8%E8%A1%80%E9%AC%BC', source:'吸血鬼'},
-      {title:'帝国五百年', href:'./chronicle.html', source:'帝国五百年'},
-      {title:'国立图书馆', href:'./library.html', source:'弗菈明国立图书馆'}
-    ];
-    root.innerHTML = portals.map(item => {
-      const section = getSection(item.source);
-      const text = section?.summary || (section?.paragraphs || []).join(' ') || '';
-      return `<a class="portal-card reveal" href="${item.href}">
-        <span>${escapeHTML(item.title)}</span>
-        <p>${escapeHTML(excerpt(text, 150))}</p>
+  function normalize(value = '') {
+    return String(value).toLowerCase().replace(/\s+/g, ' ').trim();
+  }
+
+  function safeId(value = '') {
+    return encodeURIComponent(String(value));
+  }
+
+  function detailURL(type, id) {
+    return `./detail.html?type=${encodeURIComponent(type)}&id=${safeId(id)}`;
+  }
+
+  function excerpt(text = '', max = 140) {
+    const clean = String(text).replace(/\s+/g, ' ').trim();
+    if (clean.length <= max) return clean;
+    return `${clean.slice(0, max)}……`;
+  }
+
+  function matchesQuery(item, fields, query) {
+    if (!query) return true;
+    const haystack = normalize(fields.map((field) => item[field] || '').join(' '));
+    return haystack.includes(normalize(query));
+  }
+
+  function groupBy(list, getKey) {
+    return list.reduce((groups, item) => {
+      const key = getKey(item) || '未分类';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(item);
+      return groups;
+    }, {});
+  }
+
+  function sectionById(id) {
+    return (DATA.sections || []).find((section) => section.id === id || section.title === id);
+  }
+
+  function bestSectionForLocation(location) {
+    const stripped = String(location.name || '').replace(/（.*?）/g, '');
+    return (DATA.sections || []).find((section) => section.title === location.name)
+      || (DATA.sections || []).find((section) => section.id === location.id)
+      || (DATA.sections || []).find((section) => section.title === stripped)
+      || null;
+  }
+
+  function timelineSection(event) {
+    return sectionById(event.id) || (DATA.sections || []).find((section) => section.title === event.title);
+  }
+
+  function initNavigation() {
+    const current = location.pathname.split('/').pop() || 'index.html';
+    $$('.site-nav a').forEach((link) => {
+      const href = link.getAttribute('href') || '';
+      if (href.endsWith(current)) link.classList.add('active');
+    });
+
+    const toggle = $('.nav-toggle');
+    const nav = $('#siteNav');
+    if (!toggle || !nav) return;
+    toggle.addEventListener('click', () => {
+      const open = !nav.classList.contains('open');
+      nav.classList.toggle('open', open);
+      toggle.setAttribute('aria-expanded', String(open));
+    });
+  }
+
+  function getSection(title) {
+    return (DATA.sections || []).find((section) => section.title === title);
+  }
+
+  function renderHome() {
+    const gateways = $('#homeGateways');
+    if (gateways) {
+      const items = [
+        { label: '弗菈明帝国', type: 'section', id: '弗菈明帝国' },
+        { label: '地图志', href: './atlas.html' },
+        { label: '帝国五百年', href: './chronicle.html' },
+        { label: '弗菈明国立图书馆', href: './library.html' },
+        { label: '圣主信会', type: 'section', id: '圣主信会' },
+        { label: '术士', type: 'section', id: '术士' },
+        { label: '吸血鬼', type: 'section', id: '吸血鬼' },
+        { label: '月人', type: 'section', id: '月人' }
+      ];
+      gateways.innerHTML = items.map((item) => {
+        const section = item.id ? sectionById(item.id) : null;
+        const href = item.href || detailURL(item.type, section?.id || item.id);
+        const text = section ? excerpt((section.paragraphs || []).join(' '), 105) : '';
+        return `<a class="gateway-card" href="${href}">
+          <span class="gateway-title">${escapeHTML(item.label)}</span>
+          ${text ? `<span class="gateway-text">${escapeHTML(text)}</span>` : '<span class="gateway-text">地点、领地、地貌与边境。</span>'}
+        </a>`;
+      }).join('');
+    }
+
+    const empirePanel = $('#homeEmpire');
+    const empire = getSection('弗菈明帝国');
+    if (empirePanel && empire) {
+      empirePanel.innerHTML = `
+        <p class="eyebrow">弗菈明帝国</p>
+        <h2>${escapeHTML(empire.title)}</h2>
+        ${(empire.paragraphs || []).slice(0, 3).map((p) => `<p>${escapeHTML(p)}</p>`).join('')}
+        <a class="text-link" href="${detailURL('section', empire.id)}">阅读全文</a>`;
+    }
+
+    const homeIndex = $('#homeIndex');
+    if (homeIndex) {
+      const names = ['货币', '联合行会', '贵族', '缙绅会议', '纪元之手', '扭曲术源'];
+      homeIndex.innerHTML = `<p class="eyebrow">索引</p><h2>相关条目</h2>` + names.map((name) => {
+        const section = sectionById(name);
+        return section ? `<a class="index-row" href="${detailURL('section', section.id)}"><span>${escapeHTML(section.title)}</span><i>${escapeHTML(section.category || '')}</i></a>` : '';
+      }).join('');
+    }
+  }
+
+  function fillRegionOptions(select) {
+    if (!select) return;
+    [...new Set((DATA.locations || []).map((location) => location.region || '未分类'))]
+      .forEach((region) => {
+        const option = document.createElement('option');
+        option.value = region;
+        option.textContent = region;
+        select.appendChild(option);
+      });
+  }
+
+  function renderAtlas() {
+    const root = $('#atlasList');
+    if (!root) return;
+    const query = $('#atlasSearch')?.value || '';
+    const region = $('#atlasRegion')?.value || 'all';
+    let locations = DATA.locations || [];
+    if (region !== 'all') locations = locations.filter((item) => (item.region || '未分类') === region);
+    if (query) {
+      locations = locations.filter((item) => matchesQuery(item, ['name', 'region', 'text'], query));
+    }
+    if (!locations.length) {
+      root.innerHTML = '<div class="empty-state">没有匹配地点。</div>';
+      return;
+    }
+    const groups = groupBy(locations, (item) => item.region || '未分类');
+    root.innerHTML = Object.entries(groups).map(([regionName, items]) => `
+      <section class="atlas-group">
+        <h2>${escapeHTML(regionName)}</h2>
+        <div class="place-grid">
+          ${items.map((location) => {
+            const section = bestSectionForLocation(location);
+            const href = section ? detailURL('section', section.id) : detailURL('location', location.id);
+            return `<a class="place-card" href="${href}">${escapeHTML(location.name)}</a>`;
+          }).join('')}
+        </div>
+      </section>`).join('');
+  }
+
+  function renderChronicle() {
+    const root = $('#chronicleList');
+    if (!root) return;
+    const query = $('#chronicleSearch')?.value || '';
+    let events = DATA.timeline || [];
+    if (query) events = events.filter((event) => matchesQuery(event, ['date', 'title', 'text'], query));
+    if (!events.length) {
+      root.innerHTML = '<div class="empty-state">没有匹配年表。</div>';
+      return;
+    }
+    root.innerHTML = events.map((event) => {
+      const section = timelineSection(event);
+      const href = section ? detailURL('section', section.id) : detailURL('timeline', event.id);
+      return `<a class="chronicle-item" href="${href}">
+        <time>${escapeHTML(event.date || '')}</time>
+        <span>${escapeHTML(event.title || '')}</span>
+        <em>${escapeHTML(event.text || '')}</em>
       </a>`;
     }).join('');
   }
 
-  const excerptNode = $('#homeExcerpt');
-  if(excerptNode){
-    const empire = getSection('弗菈明帝国');
-    const paragraphs = empire?.paragraphs || [];
-    excerptNode.innerHTML = `
-      <p class="overline">弗菈明帝国</p>
-      <h2>${escapeHTML(empire?.title || '弗菈明帝国')}</h2>
-      ${(paragraphs.slice(0, 2)).map(p => `<p>${escapeHTML(p)}</p>`).join('')}
-      <a class="text-link" href="${empire ? sectionLink(empire) : './archive.html'}">阅读全文</a>
-    `;
+  function getBooks() {
+    const library = getSection('弗菈明国立图书馆');
+    const books = [];
+    let current = null;
+    (library?.paragraphs || []).forEach((paragraph) => {
+      const text = String(paragraph || '').trim();
+      if (!text) return;
+      if (/^《.+?》/.test(text)) {
+        current = { id: `book-${books.length + 1}`, title: text, text: [] };
+        books.push(current);
+      } else if (current) {
+        current.text.push(text);
+      }
+    });
+    return books;
   }
-}
 
-function initRegionFilter(){
-  const select = $('#regionFilter');
-  if(!select) return;
-  const regions = [...new Set((DATA.locations || []).map(item => item.region || '未分类'))];
-  regions.forEach(region => {
-    const option = document.createElement('option');
-    option.value = region;
-    option.textContent = region;
-    select.appendChild(option);
-  });
-}
-
-function renderLocations(){
-  const root = $('#locationList');
-  if(!root) return;
-  const query = $('#locationSearch')?.value.trim() || '';
-  const region = $('#regionFilter')?.value || 'all';
-  let locations = DATA.locations || [];
-  if(region !== 'all') locations = locations.filter(item => (item.region || '未分类') === region);
-  if(query) locations = locations.filter(item => [item.name, item.region, item.text].join(' ').includes(query));
-  if(!locations.length){
-    root.innerHTML = '<div class="empty">无匹配地点。</div>';
-    return;
-  }
-  const grouped = groupBy(locations, item => item.region || '未分类');
-  root.innerHTML = Object.entries(grouped).map(([name, items]) => `
-    <section class="location-group reveal">
-      <h2>${highlight(name, query)}</h2>
-      <div class="location-cards">
-        ${items.map(item => `<article class="location-card" id="${escapeHTML(item.id)}">
-          <div class="card-kicker">${highlight(item.region || '未分类', query)}</div>
-          <h3>${highlight(item.name, query)}</h3>
-          <p>${highlight(item.text || '', query)}</p>
-          <a class="text-link" href="./archive.html#${encodeURIComponent(item.id)}">查看条目</a>
-        </article>`).join('')}
-      </div>
-    </section>
-  `).join('');
-  initReveal();
-}
-
-function renderTimeline(){
-  const root = $('#timelineList');
-  if(!root) return;
-  const query = $('#timelineSearch')?.value.trim() || '';
-  let events = DATA.timeline || [];
-  if(query) events = events.filter(event => [event.date, event.title, event.text].join(' ').includes(query));
-  if(!events.length){
-    root.innerHTML = '<div class="empty">无匹配年表。</div>';
-    return;
-  }
-  root.innerHTML = events.map(event => `<article class="timeline-item reveal" id="${escapeHTML(event.id)}">
-    <div class="timeline-date">${highlight(event.date, query)}</div>
-    <div>
-      <h2>${highlight(event.title, query)}</h2>
-      <p>${highlight(event.text || '', query)}</p>
-      <a class="text-link" href="./archive.html#${encodeURIComponent(event.id)}">查看条目</a>
-    </div>
-  </article>`).join('');
-  initReveal();
-}
-
-function getLibraryBooks(){
-  const library = getSection('弗菈明国立图书馆');
-  const books = [];
-  let current = null;
-  (library?.paragraphs || []).forEach(paragraph => {
-    const text = paragraph.trim();
-    if(/^《.+》/.test(text)){
-      current = { title:text, text:[] };
-      books.push(current);
-    } else if(current && text){
-      current.text.push(text);
+  function renderLibrary() {
+    const root = $('#libraryList');
+    if (!root) return;
+    const query = $('#librarySearch')?.value || '';
+    let books = getBooks();
+    if (query) {
+      books = books.filter((book) => normalize([book.title, ...book.text].join(' ')).includes(normalize(query)));
     }
-  });
-  return books;
-}
-
-function renderLibrary(){
-  const root = $('#libraryGrid');
-  if(!root) return;
-  const query = $('#librarySearch')?.value.trim() || '';
-  let books = getLibraryBooks();
-  if(query) books = books.filter(book => [book.title, ...book.text].join(' ').includes(query));
-  if(!books.length){
-    root.innerHTML = '<div class="empty">无匹配馆藏。</div>';
-    return;
-  }
-  root.innerHTML = books.map((book, index) => `<article class="book-card reveal">
-    <div class="book-spine" aria-hidden="true">${String(index + 1).padStart(2, '0')}</div>
-    <div>
-      <h2>${highlight(book.title, query)}</h2>
-      <p>${highlight(excerpt(book.text.join(' '), 360), query)}</p>
-    </div>
-  </article>`).join('');
-  initReveal();
-}
-
-function initCategoryFilter(){
-  const select = $('#categoryFilter');
-  if(!select) return;
-  const categories = Array.isArray(DATA.metadata?.categories)
-    ? DATA.metadata.categories
-    : [...new Set((DATA.sections || []).map(section => section.category).filter(Boolean))];
-  categories.forEach(category => {
-    const option = document.createElement('option');
-    option.value = category;
-    option.textContent = category;
-    select.appendChild(option);
-  });
-}
-
-function getFilteredSections(){
-  const query = $('#searchInput')?.value.trim() || '';
-  const category = $('#categoryFilter')?.value || 'all';
-  let sections = (DATA.sections || []).filter(section => (section.paragraphs || []).length || section.summary);
-  if(category !== 'all') sections = sections.filter(section => section.category === category);
-  if(query){
-    sections = sections.filter(section => [
-      section.title, section.category, section.top, section.h1, section.summary, ...(section.paragraphs || [])
-    ].join(' ').includes(query));
-  }
-  return { sections, query };
-}
-
-function renderArchive(){
-  const root = $('#entryList');
-  if(!root) return;
-  const { sections, query } = getFilteredSections();
-  if(!sections.length){
-    root.innerHTML = '<div class="empty">无匹配条目。</div>';
-    return;
-  }
-  root.innerHTML = sections.map((section, index) => {
-    const shouldOpen = location.hash && decodeURIComponent(location.hash.slice(1)) === section.id;
-    const open = shouldOpen || query || index < 2 ? ' open' : '';
-    const paragraphs = section.paragraphs?.length ? section.paragraphs : [section.summary || ''];
-    return `<details class="entry reveal" id="${escapeHTML(section.id)}"${open}>
-      <summary>
-        <div>
-          <h2>${highlight(section.title, query)}</h2>
-          <div class="entry-meta">
-            ${section.category ? `<span>${escapeHTML(section.category)}</span>` : ''}
-            ${section.top && section.top !== section.title ? `<span>${escapeHTML(section.top)}</span>` : ''}
-          </div>
+    if (!books.length) {
+      root.innerHTML = '<div class="empty-state">没有匹配馆藏。</div>';
+      return;
+    }
+    root.innerHTML = books.map((book, index) => `
+      <details class="book-card">
+        <summary>
+          <span class="book-number">${String(index + 1).padStart(2, '0')}</span>
+          <strong>${escapeHTML(book.title)}</strong>
+        </summary>
+        <div class="book-body">
+          ${book.text.length ? book.text.map((p) => `<p>${escapeHTML(p)}</p>`).join('') : '<p>暂无摘录。</p>'}
         </div>
-        <span class="chevron">⌄</span>
-      </summary>
-      <div class="entry-body">${paragraphs.map(p => `<p>${highlight(p, query)}</p>`).join('')}</div>
-    </details>`;
-  }).join('');
-  initReveal();
-  if(location.hash){
-    const id = decodeURIComponent(location.hash.slice(1));
-    const target = document.getElementById(id);
-    if(target){
-      target.open = true;
-      setTimeout(() => target.scrollIntoView({behavior:'smooth', block:'start'}), 80);
+      </details>`).join('');
+  }
+
+  function fillCategoryOptions(select) {
+    if (!select) return;
+    const categories = [...new Set((DATA.sections || []).map((section) => section.category).filter(Boolean))];
+    categories.sort((a, b) => {
+      const ai = categoryOrder.indexOf(a);
+      const bi = categoryOrder.indexOf(b);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+    categories.forEach((category) => {
+      const option = document.createElement('option');
+      option.value = category;
+      option.textContent = category;
+      select.appendChild(option);
+    });
+  }
+
+  function renderArchive() {
+    const root = $('#archiveList');
+    if (!root) return;
+    const query = $('#archiveSearch')?.value || '';
+    const category = $('#archiveCategory')?.value || 'all';
+    let sections = DATA.sections || [];
+    if (category !== 'all') sections = sections.filter((section) => section.category === category);
+    if (query) {
+      sections = sections.filter((section) => normalize([section.title, section.category, ...(section.paragraphs || [])].join(' ')).includes(normalize(query)));
+    }
+    if (!sections.length) {
+      root.innerHTML = '<div class="empty-state">没有匹配条目。</div>';
+      return;
+    }
+    const groups = groupBy(sections, (section) => section.category || '未分类');
+    root.innerHTML = Object.entries(groups).map(([categoryName, items]) => `
+      <section class="archive-group">
+        <h2>${escapeHTML(categoryName)}</h2>
+        <div class="archive-grid">
+          ${items.map((section) => `<a class="archive-card" href="${detailURL('section', section.id)}">
+            <span>${escapeHTML(section.title)}</span>
+            <p>${escapeHTML(excerpt((section.paragraphs || []).join(' '), 120))}</p>
+          </a>`).join('')}
+        </div>
+      </section>`).join('');
+  }
+
+  function getDetailRecord(type, id) {
+    if (type === 'location') {
+      const location = (DATA.locations || []).find((item) => item.id === id || item.name === id);
+      if (!location) return null;
+      const section = bestSectionForLocation(location);
+      if (section) return { type: 'section', title: section.title, eyebrow: section.category || '地图志', paragraphs: section.paragraphs || [], id: section.id };
+      return { type: 'location', title: location.name, eyebrow: location.region || '地图志', paragraphs: [location.text || ''], id: location.id };
+    }
+    if (type === 'timeline') {
+      const event = (DATA.timeline || []).find((item) => item.id === id || item.title === id);
+      if (!event) return null;
+      const section = timelineSection(event);
+      if (section) return { type: 'section', title: section.title, eyebrow: section.category || '历史年表', paragraphs: section.paragraphs || [], id: section.id };
+      return { type: 'timeline', title: event.title, eyebrow: event.date || '历史年表', paragraphs: [event.text || ''], id: event.id };
+    }
+    const section = sectionById(id);
+    if (!section) return null;
+    return { type: 'section', title: section.title, eyebrow: section.category || section.top || '条目', paragraphs: section.paragraphs || [], id: section.id };
+  }
+
+  function renderDetail() {
+    const root = $('#detailRoot');
+    if (!root) return;
+    const params = new URLSearchParams(location.search);
+    const type = params.get('type') || 'section';
+    const id = params.get('id') || location.hash.replace(/^#/, '');
+    const record = getDetailRecord(type, id);
+    if (!record) {
+      root.innerHTML = `<section class="not-found small"><p class="eyebrow">未找到</p><h1>没有此条目</h1><a class="action primary" href="./archive.html">返回档案索引</a></section>`;
+      return;
+    }
+    document.title = `${record.title}｜热夜之梦`;
+    const related = (DATA.sections || [])
+      .filter((section) => section.id !== record.id && section.category === record.eyebrow)
+      .slice(0, 8);
+    root.innerHTML = `
+      <article class="detail-article">
+        <div class="detail-topline">
+          <a class="text-link" id="detailBack" href="./archive.html">返回</a>
+          <span>${escapeHTML(record.eyebrow)}</span>
+        </div>
+        <h1>${escapeHTML(record.title)}</h1>
+        <div class="prose">
+          ${record.paragraphs.filter(Boolean).map((p) => `<p>${escapeHTML(p)}</p>`).join('') || '<p>暂无正文。</p>'}
+        </div>
+      </article>
+      ${related.length ? `<aside class="related-panel"><p class="eyebrow">同类条目</p>${related.map((item) => `<a class="index-row" href="${detailURL('section', item.id)}"><span>${escapeHTML(item.title)}</span><i>${escapeHTML(item.category || '')}</i></a>`).join('')}</aside>` : ''}`;
+    const back = $('#detailBack');
+    if (back) {
+      back.addEventListener('click', (event) => {
+        if (history.length > 1) {
+          event.preventDefault();
+          history.back();
+        }
+      });
     }
   }
-}
 
-function initExpand(){
-  const button = $('#expandAll');
-  if(!button) return;
-  button.addEventListener('click', () => {
-    const entries = $$('.entry');
-    const open = entries.some(item => !item.open);
-    entries.forEach(item => item.open = open);
-    button.textContent = open ? '收起全部' : '展开全部';
-  });
-}
+  function bindInput(id, render) {
+    const node = $(`#${id}`);
+    if (node) node.addEventListener('input', render);
+    if (node && node.tagName === 'SELECT') node.addEventListener('change', render);
+  }
 
-function initListeners(){
-  $('#locationSearch')?.addEventListener('input', renderLocations);
-  $('#regionFilter')?.addEventListener('change', renderLocations);
-  $('#timelineSearch')?.addEventListener('input', renderTimeline);
-  $('#librarySearch')?.addEventListener('input', renderLibrary);
-  $('#searchInput')?.addEventListener('input', renderArchive);
-  $('#categoryFilter')?.addEventListener('change', renderArchive);
-  window.addEventListener('hashchange', renderArchive);
-}
+  function boot() {
+    initNavigation();
+    const page = document.body.dataset.page;
+    if (page === 'home') renderHome();
+    if (page === 'atlas') {
+      fillRegionOptions($('#atlasRegion'));
+      renderAtlas();
+      bindInput('atlasSearch', renderAtlas);
+      bindInput('atlasRegion', renderAtlas);
+    }
+    if (page === 'chronicle') {
+      renderChronicle();
+      bindInput('chronicleSearch', renderChronicle);
+    }
+    if (page === 'library') {
+      renderLibrary();
+      bindInput('librarySearch', renderLibrary);
+    }
+    if (page === 'archive') {
+      fillCategoryOptions($('#archiveCategory'));
+      renderArchive();
+      bindInput('archiveSearch', renderArchive);
+      bindInput('archiveCategory', renderArchive);
+    }
+    if (page === 'detail') renderDetail();
+  }
 
-document.addEventListener('DOMContentLoaded', () => {
-  initNav();
-  renderHome();
-  initRegionFilter();
-  renderLocations();
-  renderTimeline();
-  renderLibrary();
-  initCategoryFilter();
-  renderArchive();
-  initExpand();
-  initListeners();
-  initReveal();
-});
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
